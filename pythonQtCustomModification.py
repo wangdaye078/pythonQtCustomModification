@@ -82,13 +82,12 @@ def PythonQt_H_Modification(_path) -> bool:
 
 
 def PythonQtObjectPtr_H_Modification(_path) -> bool:
-    virtualMethods = ['~PythonQtObjectPtr',
-                      'bool isNull',
+    virtualMethods = ['bool isNull',
                       'PyObject* operator->',
                       'PyObject& operator*',
                       'operator PyObject*',
                       'void setNewRef',
-                      'PyObject* object',
+                      #'PyObject* object',
                       'QVariant evalScript',
                       'QVariant evalCode',
                       'void evalFile',
@@ -102,6 +101,8 @@ def PythonQtObjectPtr_H_Modification(_path) -> bool:
         code = f.read()
         if code.find("virtual ~PythonQtObjectPtr") > 0:
             return True
+        code = frontInsert(code, '~PythonQtObjectPtr', 'virtual ')
+        code = frontInsert(code, '~PythonQtSafeObjectPtr', 'virtual ')
         for virtualMethod in virtualMethods:
             code = frontInsert(code, virtualMethod, 'virtual ')
         f.seek(0, 0)
@@ -173,7 +174,6 @@ def common_prf_Modification(_path):
             return
         code = backInsert(code, '# the default of your Qt installation will used)\n', 'CONFIG += prepare_docs qt_docs_targets\n')
         code = replace(code, '#CONFIG += debug_and_release', 'CONFIG += debug_and_release')
-        # 新版本不需要改这个了
         if code.find('generated_cpp_515') == 0:
             code = backInsert(code, 'else:contains( QT_MINOR_VERSION, 12 ) {\n', insert1)
         f.seek(0, 0)
@@ -203,6 +203,7 @@ def pythonQtModification(_path):
         PythonQt_QtAll_pro_Modification(path)
         path = os.path.abspath(os.path.join(_path, './build/common.prf'))
         common_prf_Modification(path)
+        print('modification is over!')
     except Exception as e:
         print(f'modification {path} error! {e}')
         return
