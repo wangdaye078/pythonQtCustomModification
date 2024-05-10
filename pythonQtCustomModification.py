@@ -155,7 +155,8 @@ def PythonQt_QtAll_pro_Modification(_path):
         code = f.read()
         if code.find("DLLDESTDIR    = ../bin") > 0:
             return
-        code = replace(code, 'CONFIG += $${PYTHONQTALL_CONFIG}', 'CONFIG += $$split(PYTHONQTALL_CONFIG, " ")')
+        if code.find("eval(CONFIG += $${PYTHONQTALL_CONFIG})") == 0:
+            code = replace(code, 'CONFIG += $${PYTHONQTALL_CONFIG}', 'eval(CONFIG += $${PYTHONQTALL_CONFIG})')
         code = backInsert(code, 'DESTDIR    = ../../lib\n', 'DLLDESTDIR    = ../../bin\n')
         code = backInsert(code, 'win32: target.path = /\n', 'win32: target.CONFIG = no_dll\nwin32: dlltarget.path = $$[QT_INSTALL_PREFIX]/bin\n')
         code = replace(code, 'win32: target.path = /', 'win32: target.path = $$[QT_INSTALL_PREFIX]/lib')
@@ -170,9 +171,8 @@ def common_prf_Modification(_path):
                '      }\n      else:contains( QT_MINOR_VERSION, 15 ) {\n')
     with open(_path, 'r+', encoding="utf8") as f:
         code = f.read()
-        if code.find("CONFIG += prepare_docs qt_docs_targets") > 0:
+        if code.find("#CONFIG += debug_and_release") == 0:
             return
-        code = backInsert(code, '# the default of your Qt installation will used)\n', 'CONFIG += prepare_docs qt_docs_targets\n')
         code = replace(code, '#CONFIG += debug_and_release', 'CONFIG += debug_and_release')
         if code.find('generated_cpp_515') == 0:
             code = backInsert(code, 'else:contains( QT_MINOR_VERSION, 12 ) {\n', insert1)

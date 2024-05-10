@@ -9,6 +9,24 @@
 #include <QtCore/QString>
 #include <PythonQt.h>
 #include <PythonQt_QtAll.h>
+struct TPythonVer
+{
+	QString MajorVersion;
+	QString MinorVersion;
+	QString path;
+	TPythonVer(const QString& _MajorVersion = QString(), const QString& _MinorVersion = QString()) :
+		MajorVersion(_MajorVersion), MinorVersion(_MinorVersion) {}
+	bool operator<(const TPythonVer& _other) const
+	{
+		if (MajorVersion < _other.MajorVersion)
+			return true;
+		if (MajorVersion > _other.MajorVersion)
+			return false;
+		if (MinorVersion < _other.MinorVersion)
+			return true;
+		return false;
+	}
+};
 class PythonQtLoader :public QObject
 {
 	Q_OBJECT;
@@ -20,12 +38,19 @@ class PythonQtLoader :public QObject
 public:
 	PythonQtLoader(QObject* _parent);
 	~PythonQtLoader();
+	void setPythonHome(const QString& _Dir);
+	void setPythonVersionPriority(const QString& _Version);
 	bool initPython(void);
 	void loadCommonScript(const QString& _Dir);
 	void loadExtraScript(const QString& _Dir);
 	Q_INVOKABLE void loadMudule(const QString& _ModuleName, const QString& _Path);
 	Q_INVOKABLE void unloadMudule(const QString& _ModuleName);
 private:
+	void FindPythonVersion(QList<TPythonVer>& _listVer);
+private:
+	QString m_PythonHome;
+	TPythonVer m_PriorityVersion;
+
 	_Py_SetPythonHome m_pPy_SetPythonHome;
 	__PyModule_Clear m_pPyModule_Clear;
 	_PyConfig_InitPythonConfig m_pPyConfig_InitPythonConfig;
@@ -58,6 +83,11 @@ delete pa;
 然后在A_CreatePtr里执行了析构。整个过程在主程序里不涉及构造和析构函数的隐式调用，所以完全没问题。
 最后执行delete的时候，只要析构函数是虚函式。就可以通过类指针来执行，所以也没问题。
 所有问题完美解决。
+
+！！！！在C++优化选项里不能启动“全程序优化”，否则会提示A::~A找不到的问题
+但是经查，输入表里确实加上了A::~A，但是主程序的代码里完全访问A::~A，大概是编译器的BUG吧。
+
+在编译设置里加入了PythonQt的库，但是有时候会导致输入表里有PythonQt，有时候又没有，很奇怪。
 */
 
 #endif // PythonQtLoad_h__

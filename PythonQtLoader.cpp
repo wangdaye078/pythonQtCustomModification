@@ -14,62 +14,147 @@
 
 PythonQtLoader* g_pPythonQtLoader;
 
-struct TPythonLib
+void ReorganizePythonVersion(QList<TPythonVer>& _listVer, QMap<TPythonVer, int>& _mapVer, const TPythonVer& _PriorityVersion)
 {
-	QString path;
-	bool havedebug;
-	TPythonLib(const QString& _path = "", bool _havedebug = false) : path(_path), havedebug(_havedebug) {};
-};
-void FindPythonVersion(QMap<int, TPythonLib>& _mapVer)
+	//如果指定了优先使用的版本，那就把它放最前面，然后按版本号从大到小顺序放入
+	if (!_PriorityVersion.MajorVersion.isEmpty())
+	{
+		QMap<TPythonVer, int>::iterator t_iter = _mapVer.find(_PriorityVersion);
+		if (t_iter != _mapVer.end())
+		{
+			_listVer.append(t_iter.key());
+			_mapVer.erase(t_iter);
+		}
+	}
+	for (QMap<TPythonVer, int>::iterator i = --_mapVer.end(); i != --_mapVer.begin(); --i)
+	{
+		_listVer.append(i.key());
+	}
+}
+#if defined(Q_OS_WIN)
+void PythonQtLoader::FindPythonVersion(QList<TPythonVer>& _listVer)
 {
-	_mapVer.clear();
+	_listVer.clear();
+	QMap<TPythonVer, int> t_mapVer;		//QSet好像只支持HASH，不支持自定义比较函数
 	QProcessEnvironment t_SysEnvironment = QProcessEnvironment::systemEnvironment();
 	QString t_Paths = t_SysEnvironment.value("PATH");
-	QStringList t_PathList = t_Paths.split(";", QString::SkipEmptyParts);
+	QStringList t_PathList = t_Paths.split(";", Qt::SkipEmptyParts);
+	//如果指定了home路径，则优先找这个
+	if (!m_PythonHome.isEmpty())
+		t_PathList.append(m_PythonHome);
+
+	QString t_DebugExt = "";
+#ifndef NDEBUG
+	t_DebugExt = "_d";
+#endif
+	QString t_PythonQtName = QString("python*.dll");
+	QRegExp t_PythonQtNameReg(QString("python([0-9])([0-9]+)%1").arg(t_DebugExt));
 	foreach(QString t_Path, t_PathList)
 	{
-		QFileInfoList t_FileInfos = QDir(t_Path).entryInfoList(QStringList() << "python3[0-9]*.*", QDir::Files);
+		QFileInfoList t_FileInfos = QDir(t_Path).entryInfoList(QStringList() << t_PythonQtName, QDir::Files);
 		foreach(QFileInfo t_FileInfo, t_FileInfos)
 		{
 			if (!QLibrary::isLibrary(t_FileInfo.absoluteFilePath()))
 				continue;
-			QString t_Ver = t_FileInfo.completeBaseName().mid(QString("python").length());
-			if (t_Ver.isEmpty() || t_Ver.toInt() == 0)
+			QString t_CompleteBaseName = t_FileInfo.completeBaseName();
+			if (t_PythonQtNameReg.indexIn(t_CompleteBaseName) == -1)
 				continue;
-			QString t_DebugVerFile = t_FileInfo.absolutePath() + "/python" + t_Ver + "_d." + t_FileInfo.suffix();
-			bool t_HaveDebug = QFileInfo::exists(t_DebugVerFile);
-			_mapVer.insert(t_Ver.toInt(), TPythonLib(t_Path, t_HaveDebug));
-			qDebug() << "find python ver:" << t_Ver;
+			TPythonVer t_PythonVer(t_PythonQtNameReg.cap(1), t_PythonQtNameReg.cap(2));
+			//相同版本只保留最前面的那个
+			if (t_mapVer.find(t_PythonVer) != t_mapVer.end())
+				continue;
+			//windows下，PythonHome就是库文件所在目录
+			t_PythonVer.path = QDir(t_Path).absolutePath();
+			t_mapVer.insert(t_PythonVer, 0);
+			qDebug() << "find python ver:" << t_PythonVer.MajorVersion << "." << t_PythonVer.MinorVersion;
 		}
 	}
+	ReorganizePythonVersion(_listVer, t_mapVer, m_PriorityVersion);
 }
+#elif defined(Q_OS_LINUX)
+void PythonQtLoader::FindPythonVersion(QList<TPythonVer>& _listVer)
+{
+	_listVer.clear();
+	QMap<TPythonVer, int> t_mapVer;
+
+	QProcess t_ldconfig;
+	t_ldconfig.start("ldconfig", QStringList() << "-p");
+	t_ldconfig.waitForFinished();
+	QString t_out = QString(t_ldconfig.readAllStandardOutput());
+	//QFile t_file("z:/ldconfig-p.txt");
+	//t_file.open(QIODevice::ReadOnly | QIODevice::Text);
+	//QString t_out = QString(t_file.readAll());
+
+	QStringList t_lines = t_out.split('\n', Qt::SkipEmptyParts);
+	QRegExp t_PythonQtNameReg(QString("libpython([0-9]).([0-9]+)\\.so$"));
+	foreach(QString t_line, t_lines)
+	{
+		QStringList t_sub = t_line.split(' ', Qt::SkipEmptyParts);
+		if (t_sub.size() != 4)
+			continue;
+		if (t_PythonQtNameReg.indexIn(t_sub[0]) == -1)
+			continue;
+		TPythonVer t_PythonVer(t_PythonQtNameReg.cap(1), t_PythonQtNameReg.cap(2));
+		//相同版本只保留最前面的那个
+		if (t_mapVer.find(t_PythonVer) != t_mapVer.end())
+			continue;
+		t_PythonVer.path = QFileInfo(t_sub[3]).absolutePath();
+		t_mapVer.insert(t_PythonVer, 0);
+		qDebug() << "find python ver:" << t_PythonVer.MajorVersion << "." << t_PythonVer.MinorVersion;
+	}
+	ReorganizePythonVersion(_listVer, t_mapVer, m_PriorityVersion);
+}
+#endif
 
 PythonQtLoader::PythonQtLoader(QObject* _parent)
 	:QObject(_parent)
 {
 	g_pPythonQtLoader = this;
 }
+void PythonQtLoader::setPythonHome(const QString& _Dir)
+{
+	m_PythonHome = QDir(_Dir).absolutePath();
+	//在ubuntu2204，大概应该设置路径为/usr, 通过import sys/nprint(sys.prefix)得到
+}
+void PythonQtLoader::setPythonVersionPriority(const QString& _Version)
+{
+	int t_pos = _Version.indexOf(".");
+	if ((t_pos) >= 0)
+	{
+		m_PriorityVersion.MajorVersion = _Version.mid(0, t_pos);
+		m_PriorityVersion.MinorVersion = _Version.mid(t_pos + 1);
+	}
+	else
+	{
+		m_PriorityVersion.MajorVersion = _Version.mid(0, 1);
+		m_PriorityVersion.MinorVersion = _Version.mid(1);
+	}
+}
+#include <Python.h>
 bool PythonQtLoader::initPython(void)
 {
-	QMap<int, TPythonLib> t_PythonLibs;
-	FindPythonVersion(t_PythonLibs);
-	if (t_PythonLibs.size() == 0)
+	QList<TPythonVer> t_PythonVers;
+	FindPythonVersion(t_PythonVers);
+	if (t_PythonVers.size() == 0)
 		return false;
-	PythonQtObjectPtr* t_pPythonMainModule = NULL;
-	for (QMap<int, TPythonLib>::iterator i = --t_PythonLibs.end(); i != --t_PythonLibs.begin(); --i)
+	for (QList<TPythonVer>::iterator i = t_PythonVers.begin(); i != t_PythonVers.end(); ++i)
 	{
-		QString t_szPythonQt = "PythonQt-Qt5-Python" + QString::number(i.key()).insert(1, ".");
-		QString t_szPythonQt_QtAll = "PythonQt_QtAll-Qt5-Python" + QString::number(i.key()).insert(1, ".");
-		QString t_szPython = "python" + QString::number(i.key());
-#ifndef NDEBUG
-		if (i.value().havedebug)
-		{
-			t_szPythonQt += "_d";
-			t_szPythonQt_QtAll += "_d";
-			t_szPython += "_d";
-		}
+		QString t_szPythonQt = QString("PythonQt-Qt5-Python%1.%2").arg(i->MajorVersion).arg(i->MinorVersion);
+		QString t_szPythonQt_QtAll = QString("PythonQt_QtAll-Qt5-Python%1.%2").arg(i->MajorVersion).arg(i->MinorVersion);
+#if defined(Q_OS_WIN)
+		QString t_szPython = QString("python%1%2").arg(i->MajorVersion).arg(i->MinorVersion);
+#elif defined(Q_OS_LINUX)
+		QString t_szPython = QString("python%1.%2").arg(i->MajorVersion).arg(i->MinorVersion);//libpython3.10.so，前后都可以由Qt自动加上
 #endif
-		QLibrary t_PythonLib(t_szPython);
+#ifndef NDEBUG
+		t_szPythonQt += "_d";
+		t_szPythonQt_QtAll += "_d";
+#if defined(Q_OS_WIN)
+		t_szPython += "_d";
+#endif
+#endif
+		//加上路径，保证是载入指定的那个，而不是其他的什么地方的版本
+		QLibrary t_PythonLib(i->path + "/" + t_szPython);
 		qDebug() << "load " << t_szPython;
 		if (!t_PythonLib.load())
 		{
@@ -97,7 +182,18 @@ bool PythonQtLoader::initPython(void)
 		m_pPy_InitializeFromConfig = (_Py_InitializeFromConfig)t_PythonLib.resolve("Py_InitializeFromConfig");
 		Q_ASSERT(m_pPy_SetPythonHome != NULL && m_pPyModule_Clear != NULL &&
 			m_pPyConfig_InitPythonConfig != NULL && m_pPyConfig_SetArgv != NULL && m_pPy_InitializeFromConfig != NULL);
-		m_pPy_SetPythonHome((wchar_t*)(i.value().path).utf16());
+#if defined(Q_OS_WIN)
+		m_pPy_SetPythonHome((wchar_t*)(i->path).utf16());
+#elif defined(Q_OS_LINUX)
+		if (m_PythonHome.isEmpty())
+		{
+			QProcess t_ProcessPython;
+			t_ProcessPython.start("python3", QStringList() << "-c" << "import sys;print(sys.prefix)");
+			t_ProcessPython.waitForFinished();
+			m_PythonHome = QString(t_ProcessPython.readAllStandardOutput());
+		}
+		m_pPy_SetPythonHome((wchar_t*)(m_PythonHome).utf16());
+#endif
 		m_pPythonQt_init = (_PythonQt_init)t_PythonQtLib.resolve("PythonQt_init");
 		m_pPythonQt_self = (_PythonQt_self)t_PythonQtLib.resolve("PythonQt_self");
 		m_pPythonQt_CreateObjectPtr = (_PythonQt_CreateObjectPtr)t_PythonQtLib.resolve("PythonQt_CreateObjectPtr");
@@ -126,6 +222,7 @@ void PythonQtLoader::loadCommonScript(const QString& _Dir)
 	//t_pPythonQt->registerCPPClass("TRunProcess", "", "GtManage", PythonQtCreateObject<TRunProcessWrapper>);
 	t_pPythonQt->registerCPPClass("PROTO_MANAGERTOOL", "", "GtManage", PythonQtCreateObject<PythonQtWrapper_PROTO_MANAGERTOOL>);
 	qDebug() << "registerClass over ";
+
 	PythonQtObjectPtr* t_pPythonMainModule = m_pPythonQt_CreateObjectPtr(t_pPythonQt->getMainModule());
 	Q_ASSERT(!t_pPythonMainModule->isNull());
 	t_pPythonMainModule->addObject("g_GtManage", g_pManage);
@@ -149,7 +246,7 @@ void PythonQtLoader::loadExtraScript(const QString& _Dir)
 		int t_PyArgc = _countof(t_PyArgv);
 		PyStatus t_status = m_pPyConfig_SetArgv(&t_PyConfig, t_PyArgc, t_PyArgv);
 		if (t_status._type == PyStatus::_PyStatus_TYPE_OK)
-			Py_InitializeFromConfig(&t_PyConfig);
+			m_pPy_InitializeFromConfig(&t_PyConfig);
 
 		QString t_ModuleName = QFileInfo(t_File).baseName();
 		PythonQtObjectPtr* t_Module = m_pPythonQt_CreateObjectPtr(m_pPythonQt_self()->createModuleFromScript(t_ModuleName));
