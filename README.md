@@ -4,3 +4,4 @@ pythonQt一般只能直接链接到程序，这样就限制了用户使用的Pyt
 通过增大发布程序的体积，增加兼容性。  
 pythonQtCustomModification.py为pythonQt的补丁脚本  
 PythonQtLoader是我使用的动态载入代码，需要动态载入的可以参考后自己写。  
+
