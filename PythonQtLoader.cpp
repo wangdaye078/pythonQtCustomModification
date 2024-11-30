@@ -188,7 +188,7 @@ bool PythonQtLoader::initPython(void)
 		if (m_PythonHome.isEmpty())
 		{
 			QProcess t_ProcessPython;
-			t_ProcessPython.start("python3", QStringList() << "-c" << "import sys;print(sys.prefix)");
+			t_ProcessPython.start(QString("python%1.%2").arg(i->MajorVersion).arg(i->MinorVersion), QStringList() << "-c" << "import sys;print(sys.prefix)");
 			t_ProcessPython.waitForFinished();
 			m_PythonHome = QString(t_ProcessPython.readAllStandardOutput());
 		}
