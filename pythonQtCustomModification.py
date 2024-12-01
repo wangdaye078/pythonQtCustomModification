@@ -6,31 +6,31 @@ import re
 import xml.etree.ElementTree as ET
 
 
-def frontInsert(_source, _tag, _insert):
+def frontInsert(_source: str, _tag: str, _insert: str):
     if (pos := _source.find(_tag)) > 0:
         return _source[:pos] + _insert + _source[pos:]
     raise Exception(f'not found {_tag}')
 
 
-def rfrontInsert(_source, _tag, _insert):
+def rfrontInsert(_source: str, _tag: str, _insert: str):
     if (pos := _source.rfind(_tag)) > 0:
         return _source[:pos] + _insert + _source[pos:]
     raise Exception(f'not found {_tag}')
 
 
-def backInsert(_source, _tag, _insert):
+def backInsert(_source: str, _tag: str, _insert: str):
     if (pos := _source.find(_tag)) > 0:
         return _source[:pos + len(_tag)] + _insert + _source[pos + len(_tag):]
     raise Exception(f'not found {_tag}')
 
 
-def replace(_source, _tag, _insert):
+def replace(_source: str, _tag: str, _insert: str):
     if (pos := _source.find(_tag)) > 0:
         return _source.replace(_tag, _insert)
     raise Exception(f'not found {_tag}')
 
 
-def get_qt_version(_path):
+def get_qt_version(_path: str):
     with open(_path, 'r+', encoding="utf8") as f:
         code = f.read()
         result = re.search('QT_REPO_MODULE_VERSION "(\\d+).(\\d+).(\\d+)"', code)
@@ -38,7 +38,7 @@ def get_qt_version(_path):
     return None, None, None
 
 
-def PythonQt_Cpp_Modification(_path) -> bool:
+def PythonQt_Cpp_Modification(_path: str):
     insert1 = ('PythonQtObjectPtr PythonQt::getModule(const QString& name) {\n'
                '  PythonQtObjectPtr dict = PyImport_GetModuleDict();\n'
                '  return PyDict_GetItemString(dict, QStringToPythonCharPointer(name));\n}\n\n'
@@ -55,15 +55,16 @@ def PythonQt_Cpp_Modification(_path) -> bool:
     with open(_path, 'r+', encoding="utf8") as f:
         code = f.read()
         if code.find("PythonQtObjectPtr PythonQt::getModule") >= 0:
-            return True
+            print('PythonQt.cpp is Modified!')
+            return
         code = frontInsert(code, 'PythonQtObjectPtr PythonQt::importModule', insert1)
         code += insert2
         f.seek(0, 0)
         f.write(code)
-    return True
+    return
 
 
-def PythonQt_H_Modification(_path) -> bool:
+def PythonQt_H_Modification(_path: str):
     insert1 = ('  //! get the given module of python\n'
                '  virtual PythonQtObjectPtr getModule(const QString &name);\n\n'
                '  //! remove the given module of python\n'
@@ -85,17 +86,18 @@ def PythonQt_H_Modification(_path) -> bool:
     with open(_path, 'r+', encoding="utf8") as f:
         code = f.read()
         if code.find("virtual PythonQtObjectPtr getModule") >= 0:
-            return True
+            print('PythonQt.h is Modified!')
+            return
         code = frontInsert(code, '  //! import the given module', insert1)
         code = rfrontInsert(code, '#endif', insert2)
         for virtualMethod in virtualMethods:
             code = frontInsert(code, virtualMethod, 'virtual ')
         f.seek(0, 0)
         f.write(code)
-    return True
+    return
 
 
-def PythonQtObjectPtr_H_Modification(_path) -> bool:
+def PythonQtObjectPtr_H_Modification(_path: str):
     virtualMethods = ['bool isNull',
                       'PyObject* operator->',
                       'PyObject& operator*',
@@ -114,23 +116,25 @@ def PythonQtObjectPtr_H_Modification(_path) -> bool:
     with open(_path, 'r+', encoding="utf8") as f:
         code = f.read()
         if code.find("virtual ~PythonQtObjectPtr") >= 0:
-            return True
+            print('PythonQtObjectPtr.h is Modified!')
+            return
         code = frontInsert(code, '~PythonQtObjectPtr', 'virtual ')
         code = frontInsert(code, '~PythonQtSafeObjectPtr', 'virtual ')
         for virtualMethod in virtualMethods:
             code = frontInsert(code, virtualMethod, 'virtual ')
         f.seek(0, 0)
         f.write(code)
-    return True
+    return
 
 
-def PythonQt_QtAll_Cpp_Modification(_path):
+def PythonQt_QtAll_Cpp_Modification(_path: str):
     insert1 = ('void PythonQt_QtAll_init() {\n'
                '    PythonQt_QtAll::init();\n'
                '}\n')
     with open(_path, 'r+', encoding="utf8") as f:
         code = f.read()
         if code.find("PythonQt_QtAll_init") >= 0:
+            print('PythonQt_QtAll.cpp is Modified!')
             return
         code += insert1
         f.seek(0, 0)
@@ -138,12 +142,13 @@ def PythonQt_QtAll_Cpp_Modification(_path):
     return
 
 
-def PythonQt_QtAll_H_Modification(_path):
+def PythonQt_QtAll_H_Modification(_path: str):
     insert1 = ('extern "C" PYTHONQT_QTALL_EXPORT void PythonQt_QtAll_init();\n'
                'typedef void (*_PythonQt_QtAll_init)();\n\n')
     with open(_path, 'r+', encoding="utf8") as f:
         code = f.read()
         if code.find("PythonQt_QtAll_init") >= 0:
+            print('PythonQt_QtAll.h is Modified!')
             return
         code = rfrontInsert(code, '#endif', insert1)
         f.seek(0, 0)
@@ -151,10 +156,11 @@ def PythonQt_QtAll_H_Modification(_path):
     return
 
 
-def pythonqt_pro_Modification(_path):
+def pythonqt_pro_Modification(_path: str):
     with open(_path, 'r', encoding="utf8") as f:
         code = f.read()
         if code.find("SUBDIRS = generator") < 0:
+            print('pythonqt.pro is Modified!')
             return
         code = replace(code, 'SUBDIRS = generator ', 'SUBDIRS = ')
     with open(_path, 'w', encoding="utf8") as f:
@@ -162,10 +168,11 @@ def pythonqt_pro_Modification(_path):
     return
 
 
-def src_pro_Modification(_path):
+def src_pro_Modification(_path: str):
     with open(_path, 'r+', encoding="utf8") as f:
         code = f.read()
         if code.find("DLLDESTDIR    = ../bin") >= 0:
+            print('src.pro is Modified!')
             return
         code = backInsert(code, 'DESTDIR    = ../lib\n', 'DLLDESTDIR    = ../bin\n')
         code = backInsert(code, 'win32: target.path = /\n',
@@ -179,10 +186,11 @@ def src_pro_Modification(_path):
     return
 
 
-def PythonQt_QtAll_pro_Modification(_path):
+def PythonQt_QtAll_pro_Modification(_path: str):
     with open(_path, 'r+', encoding="utf8") as f:
         code = f.read()
         if code.find("DLLDESTDIR") > 0:
+            print('PythonQt_QtAll.pro is Modified!')
             return
         if code.find("eval(CONFIG += $${PYTHONQTALL_CONFIG})") == 0:
             code = replace(code, 'CONFIG += $${PYTHONQTALL_CONFIG}', 'eval(CONFIG += $${PYTHONQTALL_CONFIG})')
@@ -198,12 +206,13 @@ def PythonQt_QtAll_pro_Modification(_path):
     return
 
 
-def common_prf_Modification(_path):
+def common_prf_Modification(_path: str):
     insert1 = ('        PYTHONQT_GENERATED_PATH = $$PWD/../generated_cpp_511\n'
                '      }\n      else:contains( QT_MINOR_VERSION, 15 ) {\n')
     with open(_path, 'r+', encoding="utf8") as f:
         code = f.read()
         if code.find("#CONFIG += debug_and_release") < 0:
+            print('common.prf is Modified!')
             return
         code = replace(code, '#CONFIG += debug_and_release', 'CONFIG += debug_and_release')
         if code.find('generated_cpp_515') < 0:
@@ -213,7 +222,7 @@ def common_prf_Modification(_path):
     return
 
 
-def typesystem_gui_Modification(_gui_path, _opengl_path):
+def typesystem_gui_Modification(_gui_path: str, _opengl_path: str):
     gui_tree = ET.parse(_gui_path)
     gui_root = gui_tree.getroot()
     element_list = []
@@ -223,9 +232,10 @@ def typesystem_gui_Modification(_gui_path, _opengl_path):
         if sub_element.get('class', '').find('QOpenGL') == 0:
             element_list.append(sub_element)
 
-    if len(element_list) == 0:
+    assert len(element_list) > 0
+    if element_list[0].get('before-version', '') == '6':
+        print('typesystem_gui.xml is Modified! ')
         return
-
     for sub_element in element_list:
         sub_element.set('before-version', '6')
     gui_tree.write(_gui_path, encoding='UTF-8', xml_declaration=True)
@@ -243,7 +253,7 @@ def typesystem_gui_Modification(_gui_path, _opengl_path):
     return
 
 
-def codelistfind(_list, _str, _begin, _step, _max_count):
+def codelistfind(_list: list, _str: str, _begin: int, _step: int, _max_count: int):
     count = 0
     while count <= _max_count and (_begin + _step * count) >= 0 and (_begin + _step * count) < len(_list):
         if _list[_begin + _step * count].find(_str) >= 0:
@@ -252,13 +262,14 @@ def codelistfind(_list, _str, _begin, _step, _max_count):
     return -1
 
 
-def PythonQt_QtAll_pro_Modification_opengl(_path):
+def PythonQt_QtAll_pro_Modification_opengl(_path: str):
     with open(_path, 'r+', encoding="utf8") as f:
         codelist = f.readlines()
     line_Opengl = codelistfind(codelist, "CONFIG += PythonQtOpengl", 0, 1, 9999999)
     assert line_Opengl > 0
     line_Opengl_rem = codelistfind(codelist, '# module is empty in Qt6', line_Opengl, -1, 1)
     if line_Opengl_rem < 0:
+        print('PythonQt_QtAll.pro opengl module is Modified!')
         return
     if codelist[line_Opengl + 1].find('}') >= 0:
         del codelist[line_Opengl + 1]
@@ -279,7 +290,7 @@ def PythonQt_QtAll_pro_Modification_opengl(_path):
     return
 
 
-def pythonQtModification(_path):
+def pythonQtModification(_path: str):
     PythonQtProPath = os.path.abspath(os.path.join(_path, './PythonQt.pro'))
     if not os.path.exists(PythonQtProPath):
         print(f'{PythonQtProPath} not exist!')
