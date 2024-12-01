@@ -54,7 +54,7 @@ def PythonQt_Cpp_Modification(_path) -> bool:
                '  return new PythonQtObjectPtr(_ptr);\n}\n\n')
     with open(_path, 'r+', encoding="utf8") as f:
         code = f.read()
-        if code.find("PythonQtObjectPtr PythonQt::getModule") > 0:
+        if code.find("PythonQtObjectPtr PythonQt::getModule") >= 0:
             return True
         code = frontInsert(code, 'PythonQtObjectPtr PythonQt::importModule', insert1)
         code += insert2
@@ -84,7 +84,7 @@ def PythonQt_H_Modification(_path) -> bool:
                       'void evalFile']
     with open(_path, 'r+', encoding="utf8") as f:
         code = f.read()
-        if code.find("virtual PythonQtObjectPtr getModule") > 0:
+        if code.find("virtual PythonQtObjectPtr getModule") >= 0:
             return True
         code = frontInsert(code, '  //! import the given module', insert1)
         code = rfrontInsert(code, '#endif', insert2)
@@ -113,7 +113,7 @@ def PythonQtObjectPtr_H_Modification(_path) -> bool:
                       'QVariant call(const QVariantList&']
     with open(_path, 'r+', encoding="utf8") as f:
         code = f.read()
-        if code.find("virtual ~PythonQtObjectPtr") > 0:
+        if code.find("virtual ~PythonQtObjectPtr") >= 0:
             return True
         code = frontInsert(code, '~PythonQtObjectPtr', 'virtual ')
         code = frontInsert(code, '~PythonQtSafeObjectPtr', 'virtual ')
@@ -130,7 +130,7 @@ def PythonQt_QtAll_Cpp_Modification(_path):
                '}\n')
     with open(_path, 'r+', encoding="utf8") as f:
         code = f.read()
-        if code.find("PythonQt_QtAll_init") > 0:
+        if code.find("PythonQt_QtAll_init") >= 0:
             return
         code += insert1
         f.seek(0, 0)
@@ -143,7 +143,7 @@ def PythonQt_QtAll_H_Modification(_path):
                'typedef void (*_PythonQt_QtAll_init)();\n\n')
     with open(_path, 'r+', encoding="utf8") as f:
         code = f.read()
-        if code.find("PythonQt_QtAll_init") > 0:
+        if code.find("PythonQt_QtAll_init") >= 0:
             return
         code = rfrontInsert(code, '#endif', insert1)
         f.seek(0, 0)
@@ -154,6 +154,8 @@ def PythonQt_QtAll_H_Modification(_path):
 def pythonqt_pro_Modification(_path):
     with open(_path, 'r', encoding="utf8") as f:
         code = f.read()
+        if code.find("SUBDIRS = generator") < 0:
+            return
         code = replace(code, 'SUBDIRS = generator ', 'SUBDIRS = ')
     with open(_path, 'w', encoding="utf8") as f:
         f.write(code)
@@ -163,7 +165,7 @@ def pythonqt_pro_Modification(_path):
 def src_pro_Modification(_path):
     with open(_path, 'r+', encoding="utf8") as f:
         code = f.read()
-        if code.find("DLLDESTDIR    = ../bin") > 0:
+        if code.find("DLLDESTDIR    = ../bin") >= 0:
             return
         code = backInsert(code, 'DESTDIR    = ../lib\n', 'DLLDESTDIR    = ../bin\n')
         code = backInsert(code, 'win32: target.path = /\n',
@@ -180,7 +182,7 @@ def src_pro_Modification(_path):
 def PythonQt_QtAll_pro_Modification(_path):
     with open(_path, 'r+', encoding="utf8") as f:
         code = f.read()
-        if code.find("DLLDESTDIR    = ../bin") > 0:
+        if code.find("DLLDESTDIR") > 0:
             return
         if code.find("eval(CONFIG += $${PYTHONQTALL_CONFIG})") == 0:
             code = replace(code, 'CONFIG += $${PYTHONQTALL_CONFIG}', 'eval(CONFIG += $${PYTHONQTALL_CONFIG})')
@@ -201,10 +203,10 @@ def common_prf_Modification(_path):
                '      }\n      else:contains( QT_MINOR_VERSION, 15 ) {\n')
     with open(_path, 'r+', encoding="utf8") as f:
         code = f.read()
-        if code.find("#CONFIG += debug_and_release") == 0:
+        if code.find("#CONFIG += debug_and_release") < 0:
             return
         code = replace(code, '#CONFIG += debug_and_release', 'CONFIG += debug_and_release')
-        if code.find('generated_cpp_515') == 0:
+        if code.find('generated_cpp_515') < 0:
             code = backInsert(code, 'else:contains( QT_MINOR_VERSION, 12 ) {\n', insert1)
         f.seek(0, 0)
         f.write(code)
@@ -214,8 +216,6 @@ def common_prf_Modification(_path):
 def typesystem_gui_Modification(_gui_path, _opengl_path):
     gui_tree = ET.parse(_gui_path)
     gui_root = gui_tree.getroot()
-    opengl_root = ET.Element('typesystem')
-    opengl_root.set('package', 'com.trolltech.qt.OpenGL')
     element_list = []
     for sub_element in gui_root:
         if sub_element.get('name', '').find('QOpenGL') == 0:
@@ -227,21 +227,28 @@ def typesystem_gui_Modification(_gui_path, _opengl_path):
         return
 
     for sub_element in element_list:
-        gui_root.remove(sub_element)
-        opengl_root.append(sub_element)
+        sub_element.set('before-version', '6')
+    gui_tree.write(_gui_path, encoding='UTF-8', xml_declaration=True)
 
-    opengl_tree = ET.ElementTree(opengl_root)
+    opengl_tree = ET.parse(_opengl_path)
+    opengl_root = opengl_tree.getroot()
+    for sub_element in opengl_root:
+        if sub_element.tag != 'suppress-warning':
+            sub_element.set('before-version', '6')
+    for sub_element in reversed(element_list):
+        sub_element.attrib.pop('before-version')
+        sub_element.set('since-version', '6')
+        opengl_root.insert(0, sub_element)
     opengl_tree.write(_opengl_path, encoding='UTF-8', xml_declaration=True)
-    gui_tree.write(_opengl_path, encoding='UTF-8', xml_declaration=True)
     return
 
 
 def codelistfind(_list, _str, _begin, _step, _max_count):
     count = 0
-    while count < _max_count and (_begin + _step * count) >= 0 and (_begin + _step * count) < len(_list):
-        count += 1
+    while count <= _max_count and (_begin + _step * count) >= 0 and (_begin + _step * count) < len(_list):
         if _list[_begin + _step * count].find(_str) >= 0:
             return _begin + _step * count
+        count += 1
     return -1
 
 
@@ -249,16 +256,23 @@ def PythonQt_QtAll_pro_Modification_opengl(_path):
     with open(_path, 'r+', encoding="utf8") as f:
         codelist = f.readlines()
     line_Opengl = codelistfind(codelist, "CONFIG += PythonQtOpengl", 0, 1, 9999999)
-    if line_Opengl >= 0:
-        if codelist[line_Opengl + 1].find('}') >= 0:
-            del codelist[line_Opengl + 1]
-        if codelist[line_Opengl - 1].find('# module is empty in Qt6') >= 0:
-            del codelist[line_Opengl - 1]
-        if codelist[line_Opengl - 2].find('lessThan(QT_MAJOR_VERSION, 6)') >= 0:
-            del codelist[line_Opengl - 2]
+    assert line_Opengl > 0
+    line_Opengl_rem = codelistfind(codelist, '# module is empty in Qt6', line_Opengl, -1, 1)
+    if line_Opengl_rem < 0:
+        return
+    if codelist[line_Opengl + 1].find('}') >= 0:
+        del codelist[line_Opengl + 1]
+    if codelist[line_Opengl - 1].find('# module is empty in Qt6') >= 0:
+        del codelist[line_Opengl - 1]
+    if codelist[line_Opengl - 2].find('lessThan(QT_MAJOR_VERSION, 6)') >= 0:
+        del codelist[line_Opengl - 2]
     line_Opengl = codelistfind(codelist, '  QT += opengl', 0, 1, 9999999)
-    if line_Opengl >= 0:
-        codelist[line_Opengl] = '  QT += openglwidgets opengl\n'
+    assert line_Opengl > 0
+    line_openglwidgets = codelistfind(codelist, 'equals(QT_MAJOR_VERSION, 6)', line_Opengl, 1, 1)
+    if line_openglwidgets < 0:
+        codelist.insert(line_Opengl + 1, '  equals(QT_MAJOR_VERSION, 6){\n')
+        codelist.insert(line_Opengl + 2, '    QT += openglwidgets\n')
+        codelist.insert(line_Opengl + 3, '  }\n')
 
     with open(_path, 'w', encoding="utf8") as f:
         f.writelines(codelist)
@@ -293,13 +307,12 @@ def pythonQtModification(_path):
         PythonQt_QtAll_pro_Modification(path)
         path = os.path.abspath(os.path.join(_path, './build/common.prf'))
         common_prf_Modification(path)
-        if ver_major >= 6:
-            # 对于Qt6.x，opengl模块已经从gui中独立出来了，所以修改这个配置文件，可以独立控制是否编译
-            typesystem_gui_Modification(os.path.join(_path, './generator/typesystem_gui.xml'),
-                                        os.path.join(_path, './generator/typesystem_opengl.xml'))
-            PythonQt_QtAll_pro_Modification_opengl(
-                os.path.join(_path, './extensions/PythonQt_QtAll/PythonQt_QtAll.pro'))
-            pass
+
+        # 对于Qt6.x，opengl模块已经从gui中独立出来了，所以修改这个配置文件，可以独立控制是否编译
+        typesystem_gui_Modification(os.path.join(_path, './generator/typesystem_gui.xml'),
+                                    os.path.join(_path, './generator/typesystem_opengl.xml'))
+        PythonQt_QtAll_pro_Modification_opengl(os.path.join(_path, './extensions/PythonQt_QtAll/PythonQt_QtAll.pro'))
+
         print('modification is over!')
     except Exception as e:
         print(f'modification {path} error! {e}')
